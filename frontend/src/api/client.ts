@@ -1,8 +1,21 @@
 import axios, { AxiosError } from 'axios';
 import { ApiResponse, DashboardStats, ActivityDataPoint, Email, EmailStatus, User } from '../types';
 
+const getApiBaseUrl = (): string => {
+  const envUrl = import.meta.env.VITE_API_URL;
+  if (!envUrl || envUrl.trim() === '') {
+    return '/api';
+  }
+  let cleaned = envUrl.trim().replace(/\/+$/, '');
+  // If the URL does not end with /api, append /api so endpoints map correctly
+  if (!cleaned.endsWith('/api')) {
+    cleaned = `${cleaned}/api`;
+  }
+  return cleaned;
+};
+
 const api = axios.create({
-  baseURL: import.meta.env.VITE_API_URL || '/api',
+  baseURL: getApiBaseUrl(),
   headers: {
     'Content-Type': 'application/json',
   },

@@ -13,9 +13,50 @@ export const createApp = (): Application => {
 
   // Security and utilities middleware
   app.use(helmet());
+
+  const allowedOrigins = [
+    env.FRONTEND_URL,
+    env.FRONTEND_URL?.replace(/\/$/, ''),
+    'http://localhost:5173',
+    'http://127.0.0.1:5173',
+    'http://localhost:3000',
+  ].filter(Boolean) as string[];
+
+  // Also support comma-separated origins if provided in FRONTEND_URL
+  if (env.FRONTEND_URL && env.FRONTEND_URL.includes(',')) {
+    env.FRONTEND_URL.split(',').forEach((url) => {
+      const trimmed = url.trim().replace(/\/$/, '');
+      if (trimmed && !allowedOrigins.includes(trimmed)) {
+        allowedOrigins.push(trimmed);
+      }
+    });
+  }
+
   app.use(
     cors({
-      origin: [env.FRONTEND_URL, 'http://localhost:5173', 'http://127.0.0.1:5173', 'http://localhost:3000'],
+      origin: (origin, callback) => {
+        // Allow requests with no origin (mobile apps, curl, server-to-server, health checks)
+        if (!origin) return callback(null, true);
+
+        const cleanOrigin = origin.replace(/\/$/, '');
+
+        // Match predefined or configured origins
+        if (allowedOrigins.includes(cleanOrigin) || allowedOrigins.includes(origin)) {
+          return callback(null, true);
+        }
+
+        // Allow any Render-hosted subdomain (*.onrender.com) for production or PR previews
+        if (/^https:\/\/[a-zA-Z0-9-]+\.onrender\.com$/.test(cleanOrigin)) {
+          return callback(null, true);
+        }
+
+        // Allow localhost on any port for local development
+        if (/^http:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/.test(cleanOrigin)) {
+          return callback(null, true);
+        }
+
+        return callback(new Error(`CORS error: Origin ${origin} not allowed by Access-Control-Allow-Origin`));
+      },
       credentials: true,
       methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
       allowedHeaders: ['Content-Type', 'Authorization'],
