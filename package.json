@@ -1,0 +1,35 @@
+{
+  "name": "reachinbox-email-scheduler",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Production Full-Stack Email Scheduler SaaS application with BullMQ, Redis, PostgreSQL, Prisma, React, TypeScript, and Ethereal Email",
+  "scripts": {
+    "install:all": "npm install --prefix backend && npm install --prefix frontend",
+    "docker:up": "docker compose up -d",
+    "docker:down": "docker compose down",
+    "backend:dev": "npm run dev --prefix backend",
+    "worker:dev": "npm run worker --prefix backend",
+    "frontend:dev": "npm run dev --prefix frontend",
+    "backend:build": "npm run build --prefix backend",
+    "frontend:build": "npm run build --prefix frontend",
+    "test:backend": "npm run test --prefix backend",
+    "prisma:generate": "npm run prisma:generate --prefix backend",
+    "prisma:migrate": "npm run prisma:migrate --prefix backend",
+    "prisma:push": "npm run prisma:push --prefix backend",
+    "prisma:seed": "npm run seed --prefix backend"
+  },
+  "keywords": [
+    "email-scheduler",
+    "bullmq",
+    "redis",
+    "postgresql",
+    "prisma",
+    "react",
+    "typescript",
+    "reachinbox",
+    "outbox-labs"
+  ],
+  "author": "ReachInbox Candidate",
+  "license": "MIT"
+}
+
