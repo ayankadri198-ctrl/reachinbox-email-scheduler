@@ -4,6 +4,21 @@ import { Logger } from '../utils/logger.js';
 
 const logger = new Logger('Redis');
 
+export const isRedisConfigured = (): boolean => {
+  const redisUrl = process.env.REDIS_URL || env.REDIS_URL;
+  if (redisUrl && redisUrl.trim() !== '') {
+    const isServerless = Boolean(process.env.VERCEL || process.env.AWS_LAMBDA_FUNCTION_NAME);
+    if (isServerless && (redisUrl.includes('localhost') || redisUrl.includes('127.0.0.1'))) {
+      return false;
+    }
+    return true;
+  }
+  if (process.env.VERCEL || process.env.AWS_LAMBDA_FUNCTION_NAME) {
+    return false;
+  }
+  return Boolean(env.REDIS_HOST);
+};
+
 export const getRedisConnectionOptions = (): RedisOptions => {
   const redisUrl = env.REDIS_URL || process.env.REDIS_URL;
   if (redisUrl && redisUrl.trim() !== '') {
@@ -19,6 +34,9 @@ export const getRedisConnectionOptions = (): RedisOptions => {
         enableReadyCheck: false,
         connectTimeout: 5000,
         retryStrategy(times) {
+          if (!isRedisConfigured()) {
+            return null;
+          }
           if (times > 3) {
             logger.warn(`Redis max connection retry limit reached (${times}).`);
             return null;
@@ -61,6 +79,9 @@ export const getRedisConnectionOptions = (): RedisOptions => {
     enableReadyCheck: false,
     connectTimeout: 5000,
     retryStrategy(times) {
+      if (!isRedisConfigured()) {
+        return null;
+      }
       if (times > 3) {
         logger.warn(`Redis max connection retry limit reached (${times}).`);
         return null;
@@ -81,24 +102,80 @@ export const getRedisConnectionOptions = (): RedisOptions => {
 
 export const redisConnectionOptions: RedisOptions = getRedisConnectionOptions();
 
-// Create a standalone Redis client for general health checks and queue inspections
-export const redisClient = new Redis(redisConnectionOptions);
+let _redisClient: Redis | null = null;
 
-redisClient.on('connect', () => {
-  logger.info(`Connecting to Redis at ${redisConnectionOptions.host}:${redisConnectionOptions.port}...`);
-});
+export const getRedisClient = (): Redis | null => {
+  if (!isRedisConfigured()) {
+    return null;
+  }
 
-redisClient.on('ready', () => {
-  logger.success('Connected to Redis server and ready');
-});
+  if (!_redisClient) {
+    _redisClient = new Redis({
+      ...redisConnectionOptions,
+      lazyConnect: true,
+    });
 
-redisClient.on('error', (err) => {
-  logger.error('Redis error:', err);
+    _redisClient.on('connect', () => {
+      logger.info(`Connecting to Redis at ${redisConnectionOptions.host}:${redisConnectionOptions.port}...`);
+    });
+
+    _redisClient.on('ready', () => {
+      logger.success('Connected to Redis server and ready');
+    });
+
+    _redisClient.on('error', (err: any) => {
+      if ((err?.code === 'ECONNREFUSED' && !isRedisConfigured()) || err?.message?.includes('Connection is closed')) {
+        return;
+      }
+      logger.error('Redis error:', err);
+    });
+  }
+
+  return _redisClient;
+};
+
+// Create a standalone Redis client proxy that lazily instantiates or safely degrades
+export const redisClient: Redis = new Proxy({} as Redis, {
+  get(_target, prop) {
+    const client = getRedisClient();
+    if (!client) {
+      if (prop === 'ping') {
+        return async () => {
+          throw new Error('Redis is not configured in this environment');
+        };
+      }
+      if (prop === 'quit' || prop === 'disconnect') {
+        return async () => {};
+      }
+      if (prop === 'on' || prop === 'off' || prop === 'removeListener') {
+        return () => {};
+      }
+      throw new Error('Redis is not configured in this environment. Please configure REDIS_URL.');
+    }
+    if (prop === 'quit') {
+      return async () => {
+        try {
+          await client.quit();
+        } catch {
+          // ignore already closed
+        } finally {
+          _redisClient = null;
+        }
+      };
+    }
+    const val = (client as any)[prop];
+    return typeof val === 'function' ? val.bind(client) : val;
+  },
 });
 
 export const connectRedis = async (): Promise<void> => {
+  if (!isRedisConfigured()) {
+    logger.warn('Redis is not configured in this environment. Skipping startup check.');
+    return;
+  }
   try {
-    const ping = await redisClient.ping();
+    const client = getRedisClient();
+    const ping = await client?.ping();
     logger.success(`Redis ping response: ${ping}`);
   } catch (error) {
     logger.error('Redis connection failed during startup check', error);

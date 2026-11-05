@@ -131,7 +131,10 @@ export const createEmailWorker = () => {
     logger.error(`Job ${job?.id} failed with error: ${err.message}`);
   });
 
-  worker.on('error', (err) => {
+  worker.on('error', (err: any) => {
+    if (err?.message?.includes('Connection is closed')) {
+      return;
+    }
     logger.error('Worker encountered an unexpected error:', err);
   });
 

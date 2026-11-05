@@ -5,7 +5,7 @@ import morgan from 'morgan';
 import { apiRouter } from './routes/index.js';
 import { errorHandler } from './middleware/error.middleware.js';
 import { env } from './config/env.js';
-import { redisClient } from './config/redis.js';
+import { redisClient, isRedisConfigured } from './config/redis.js';
 import { prisma } from './config/prisma.js';
 
 export const createApp = (): Application => {
@@ -89,17 +89,21 @@ export const createApp = (): Application => {
       dbStatus = 'unhealthy';
     }
 
-    try {
-      const ping = await Promise.race([
-        redisClient.ping(),
-        new Promise((_, reject) => setTimeout(() => reject(new Error('Redis Timeout')), 3000)),
-      ]);
-      if (ping !== 'PONG') redisStatus = 'degraded';
-    } catch {
-      redisStatus = 'unhealthy';
+    if (!isRedisConfigured()) {
+      redisStatus = 'unconfigured';
+    } else {
+      try {
+        const ping = await Promise.race([
+          redisClient.ping(),
+          new Promise((_, reject) => setTimeout(() => reject(new Error('Redis Timeout')), 3000)),
+        ]);
+        if (ping !== 'PONG') redisStatus = 'degraded';
+      } catch {
+        redisStatus = 'unhealthy';
+      }
     }
 
-    const isHealthy = dbStatus === 'healthy' && redisStatus === 'healthy';
+    const isHealthy = dbStatus === 'healthy' && (redisStatus === 'healthy' || redisStatus === 'unconfigured');
 
     res.status(isHealthy ? 200 : 503).json({
       status: isHealthy ? 'healthy' : 'degraded',
