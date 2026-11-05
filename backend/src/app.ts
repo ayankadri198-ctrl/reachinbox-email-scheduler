@@ -38,10 +38,20 @@ export const createApp = (): Application => {
         // Allow requests with no origin (mobile apps, curl, server-to-server, health checks)
         if (!origin) return callback(null, true);
 
+        // In development mode, allow all origins for seamless local & tunnel testing
+        if (env.NODE_ENV === 'development' || process.env.NODE_ENV === 'development') {
+          return callback(null, true);
+        }
+
         const cleanOrigin = origin.replace(/\/$/, '');
 
         // Match predefined or configured origins
         if (allowedOrigins.includes(cleanOrigin) || allowedOrigins.includes(origin)) {
+          return callback(null, true);
+        }
+
+        // Allow any Cloudflare tunnel (*.trycloudflare.com)
+        if (/^https:\/\/[a-zA-Z0-9-._]+\.trycloudflare\.com$/.test(cleanOrigin)) {
           return callback(null, true);
         }
 
