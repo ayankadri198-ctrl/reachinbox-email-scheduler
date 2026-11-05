@@ -6,6 +6,20 @@ This platform delivers robust, fault-tolerant email scheduling built strictly wi
 
 ---
 
+## 🌐 Live Production Deployment
+
+| Resource | URL |
+| :--- | :--- |
+| **Live Web App** | [https://reachinbox-email-scheduler-eight-pi.vercel.app](https://reachinbox-email-scheduler-eight-pi.vercel.app) |
+| **Backend REST API** | [https://reachinbox-email-scheduler-eight-pi.vercel.app/api](https://reachinbox-email-scheduler-eight-pi.vercel.app/api) |
+| **Health Check** | [https://reachinbox-email-scheduler-eight-pi.vercel.app/health](https://reachinbox-email-scheduler-eight-pi.vercel.app/health) |
+
+### 🔑 Demo Login Credentials
+- **Email:** `demo@reachinbox.test` *(or use the 1-Click "Fill Demo Credentials" button on screen)*
+- **Password:** `reachinbox123`
+
+---
+
 ## 🌟 Key Highlights & Engineering Compliance
 
 - 🚫 **Strict Zero-Cron / Zero-Timeout Architecture**: Absolutely no cron jobs (`node-cron`, system crons) and no in-memory `setTimeout` / `setInterval` mechanisms.
@@ -79,7 +93,7 @@ This platform delivers robust, fault-tolerant email scheduling built strictly wi
 
 ## 📂 Project Structure
 
-```
+```text
 reachinbox-email-scheduler/
 ├── docker-compose.yml          # PostgreSQL 16 & Redis 7 with AOF persistence
 ├── .env.example                # Canonical environment variable blueprint
