@@ -42,8 +42,8 @@ appendonly.aof
 # Testing
 coverage/
 
-
 appendonlydir/
 *.zip
 .vercel
 .env*
+!**/.env.example
