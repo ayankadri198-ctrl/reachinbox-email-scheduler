@@ -38,6 +38,12 @@ const parseEnv = () => {
     console.error('❌ Invalid environment variables:', result.error.format());
     throw new Error('Environment configuration error');
   }
+  
+  // Ensure process.env has DATABASE_URL for Prisma engine
+  if (!process.env.DATABASE_URL && result.data.DATABASE_URL) {
+    process.env.DATABASE_URL = result.data.DATABASE_URL;
+  }
+  
   return result.data;
 };
 

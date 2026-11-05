@@ -25,11 +25,17 @@ if (process.env.NODE_ENV !== 'production') {
 }
 
 export const connectPrisma = async (): Promise<void> => {
+  if (!process.env.DATABASE_URL) {
+    logger.error('CRITICAL: DATABASE_URL environment variable is not defined!');
+    logger.error('Please configure DATABASE_URL in your Render Web Service Environment settings.');
+    throw new Error('DATABASE_URL environment variable is required.');
+  }
+
   try {
     await prisma.$connect();
     logger.success('Connected to PostgreSQL via Prisma');
   } catch (error) {
-    logger.error('Failed to connect to PostgreSQL', error);
+    logger.error('Failed to connect to PostgreSQL database:', error);
     throw error;
   }
 };
