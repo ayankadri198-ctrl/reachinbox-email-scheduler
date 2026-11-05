@@ -50,7 +50,42 @@ This platform delivers robust, fault-tolerant email scheduling built strictly wi
 
 ## 🏗️ System Architecture
 
+```mermaid
+flowchart TD
+    subgraph Client ["Client Layer"]
+        FE["💻 React.js Frontend (Vite)<br/>Linear-style Dashboard • Tailwind CSS • Recharts"]
+    end
+
+    subgraph Server ["Server Layer"]
+        API["⚙️ Express.js Backend Server<br/>Zod Validation • Prisma Client • BullMQ Queue"]
+    end
+
+    subgraph Storage ["Persistence & Queue Layer"]
+        DB[("🗄️ PostgreSQL 16 DB<br/>Users • Emails • Migrations")]
+        REDIS[("⚡ Redis 7 Server<br/>AOF Enabled • Delayed Job Set")]
+    end
+
+    subgraph Processing ["Background Worker Layer"]
+        WORKER["👷 Dedicated Worker Process (worker.ts)<br/>• Idempotency Check<br/>• Nodemailer Dispatch<br/>• 3x Exponential Backoff"]
+    end
+
+    subgraph Delivery ["Email Gateway"]
+        SMTP["📧 Ethereal Email SMTP Server<br/>Renders Live Preview URL for Each Test Email"]
+    end
+
+    FE -->|"HTTPS / JSON REST API + JWT"| API
+    API -->|"1. Save Record (SCHEDULED)"| DB
+    API -->|"2. Enqueue Delayed Job"| REDIS
+    REDIS -->|"3. Delay Elapses"| WORKER
+    WORKER -->|"Verify DB Status (Idempotency)"| DB
+    WORKER -->|"Send Email via SMTP"| SMTP
+    WORKER -->|"Update SENT & Record Preview URL"| DB
 ```
+
+<details>
+<summary><b>Click to expand raw text / ASCII diagram</b></summary>
+
+```text
 ┌─────────────────────────────────────────────────────────────┐
 │                 React.js Frontend (Vite)                   │
 │        Linear-style Dashboard • Tailwind CSS • Recharts      │
@@ -88,6 +123,8 @@ This platform delivers robust, fault-tolerant email scheduling built strictly wi
 │           Generates preview link for each test email        │
 └─────────────────────────────────────────────────────────────┘
 ```
+
+</details>
 
 ---
 

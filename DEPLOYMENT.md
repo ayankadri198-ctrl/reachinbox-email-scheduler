@@ -11,7 +11,42 @@ This guide details the complete production deployment of the **ReachInbox Smart 
 
 ## 🏗️ System Architecture
 
+```mermaid
+flowchart TD
+    subgraph Client ["Frontend Hosting (Vercel)"]
+        FE["💻 ReachInbox Frontend (Vercel)<br/>React 18 • Vite • Tailwind CSS • SPA Routing"]
+    end
+
+    subgraph BackendHost ["Backend Web Service (Render)"]
+        API["⚙️ ReachInbox Backend API (Render)<br/>Node.js 20 • Express REST API • Zod Validation"]
+    end
+
+    subgraph DataServices ["Managed Data Services (Render / Cloud)"]
+        DB[("🗄️ PostgreSQL 16 Database<br/>Persistent Relational DB • Prisma ORM")]
+        REDIS[("⚡ Redis 7 Key-Value (BullMQ)<br/>AOF Persistence • Delayed Set • Noeviction")]
+    end
+
+    subgraph BackgroundService ["Background Worker (Render)"]
+        WORKER["👷 Dedicated Background Worker Process<br/>BullMQ Queue Consumer • Idempotency Checks"]
+    end
+
+    subgraph ExternalSMTP ["Email Gateway"]
+        SMTP["📧 Ethereal Email SMTP Service<br/>Auto-provisioned Accounts • Live Preview URLs"]
+    end
+
+    FE -->|"HTTPS REST API Calls (Bearer JWT)"| API
+    API -->|"1. Save Record (SCHEDULED)"| DB
+    API -->|"2. Enqueue Delayed Job"| REDIS
+    REDIS -->|"3. Delay Elapses & Triggers Job"| WORKER
+    WORKER -->|"4. Idempotency Check & Status Update"| DB
+    WORKER -->|"5. Send via Nodemailer"| SMTP
+    WORKER -->|"6. Save SENT Status & Preview Link"| DB
 ```
+
+<details>
+<summary><b>Click to expand raw text / ASCII diagram</b></summary>
+
+```text
 ┌─────────────────────────────────────────────────────────────────┐
 │                    ReachInbox Frontend (Vercel)                 │
 │              React 18 • Vite • Tailwind CSS • SPA Routing       │
@@ -47,6 +82,8 @@ This guide details the complete production deployment of the **ReachInbox Smart 
 │             Renders live preview URLs for each test email       │
 └─────────────────────────────────────────────────────────────────┘
 ```
+
+</details>
 
 ---
 
