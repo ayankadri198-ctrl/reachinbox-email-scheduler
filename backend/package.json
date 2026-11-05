@@ -2,7 +2,7 @@
   "name": "reachinbox-backend",
   "version": "1.0.0",
   "description": "Production-grade backend for ReachInbox Smart Email Scheduler with BullMQ, Redis, PostgreSQL, Prisma, and Ethereal Email",
-  "main": "dist/server.js",
+  "main": "dist/index.js",
   "scripts": {
     "build": "prisma generate && tsc",
     "start": "node dist/server.js",

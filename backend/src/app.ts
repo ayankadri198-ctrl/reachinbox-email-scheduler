@@ -81,13 +81,19 @@ export const createApp = (): Application => {
     let redisStatus = 'healthy';
 
     try {
-      await prisma.$queryRaw`SELECT 1`;
+      await Promise.race([
+        prisma.$queryRaw`SELECT 1`,
+        new Promise((_, reject) => setTimeout(() => reject(new Error('DB Timeout')), 3000)),
+      ]);
     } catch {
       dbStatus = 'unhealthy';
     }
 
     try {
-      const ping = await redisClient.ping();
+      const ping = await Promise.race([
+        redisClient.ping(),
+        new Promise((_, reject) => setTimeout(() => reject(new Error('Redis Timeout')), 3000)),
+      ]);
       if (ping !== 'PONG') redisStatus = 'degraded';
     } catch {
       redisStatus = 'unhealthy';
@@ -121,4 +127,7 @@ export const createApp = (): Application => {
 
   return app;
 };
+
+export const app = createApp();
+export default app;
 

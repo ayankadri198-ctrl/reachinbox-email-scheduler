@@ -45,3 +45,5 @@ coverage/
 
 appendonlydir/
 *.zip
+.vercel
+.env*

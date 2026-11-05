@@ -17,8 +17,13 @@ export const getRedisConnectionOptions = (): RedisOptions => {
         password: parsed.password ? decodeURIComponent(parsed.password) : undefined,
         maxRetriesPerRequest: null, // Required by BullMQ
         enableReadyCheck: false,
+        connectTimeout: 5000,
         retryStrategy(times) {
-          const delay = Math.min(times * 200, 3000);
+          if (times > 3) {
+            logger.warn(`Redis max connection retry limit reached (${times}).`);
+            return null;
+          }
+          const delay = Math.min(times * 200, 1000);
           logger.warn(`Redis connection retry attempt #${times} in ${delay}ms`);
           return delay;
         },
@@ -54,8 +59,13 @@ export const getRedisConnectionOptions = (): RedisOptions => {
     password: env.REDIS_PASSWORD || undefined,
     maxRetriesPerRequest: null, // Required by BullMQ
     enableReadyCheck: false,
+    connectTimeout: 5000,
     retryStrategy(times) {
-      const delay = Math.min(times * 200, 3000);
+      if (times > 3) {
+        logger.warn(`Redis max connection retry limit reached (${times}).`);
+        return null;
+      }
+      const delay = Math.min(times * 200, 1000);
       logger.warn(`Redis connection retry attempt #${times} in ${delay}ms`);
       return delay;
     },

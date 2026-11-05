@@ -1,0 +1,41 @@
+{
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "services": {
+    "reachinbox-backend": {
+      "root": "backend",
+      "framework": "express",
+      "buildCommand": "npm install && npx prisma generate && npm run build"
+    },
+    "reachinbox-frontend": {
+      "root": "frontend",
+      "framework": "vite",
+      "buildCommand": "npm install && npm run build",
+      "rewrites": [
+        {
+          "source": "/(.*)",
+          "destination": "/index.html"
+        }
+      ]
+    }
+  },
+  "rewrites": [
+    {
+      "source": "/api/(.*)",
+      "destination": {
+        "service": "reachinbox-backend"
+      }
+    },
+    {
+      "source": "/health",
+      "destination": {
+        "service": "reachinbox-backend"
+      }
+    },
+    {
+      "source": "/(.*)",
+      "destination": {
+        "service": "reachinbox-frontend"
+      }
+    }
+  ]
+}
