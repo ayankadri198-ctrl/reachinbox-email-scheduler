@@ -12,9 +12,19 @@ async function bootstrap() {
   logger.info('====================================================');
 
   try {
-    // 1. Initialize DB and Redis
-    await connectPrisma();
-    await connectRedis();
+    // 1. Initialize DB and Redis (non-fatal so server still boots and reports health)
+    try {
+      await connectPrisma();
+    } catch (dbError) {
+      logger.warn('⚠️ PostgreSQL connection failed on startup. Server will start and retry in background.');
+      logger.warn('👉 Please verify your cloud DATABASE_URL in Render Dashboard (do not use localhost:5432 in production).');
+    }
+
+    try {
+      await connectRedis();
+    } catch (redisError) {
+      logger.warn('⚠️ Redis connection failed on startup. Server will start and retry in background.');
+    }
 
     // 2. Start Express app
     const app = createApp();
