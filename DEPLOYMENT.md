@@ -1,199 +1,218 @@
-# ReachInbox – Production Deployment Guide (Render)
+# ReachInbox – Production Deployment Guide
 
-This comprehensive guide details the production deployment of the **ReachInbox Smart Email Scheduler** SaaS platform on [Render](https://render.com).
+This guide details the complete production deployment of the **ReachInbox Smart Email Scheduler** SaaS application:
+- **Frontend**: Deployed on **Vercel** (Global Edge CDN, Vite + React 18, SPA routing)
+- **Backend API**: Deployed on **Render** (Node.js Express REST API)
+- **Background Worker**: Deployed on **Render** (Dedicated BullMQ Delayed Worker)
+- **Database**: **Render PostgreSQL 16** (Prisma ORM with auto-migrations)
+- **Redis Queue**: **Render Key Value / Redis 7** (Persistent AOF & `noeviction` policy)
 
 ---
 
-## 🏗️ Architecture Overview
-
-The deployed system consists of 5 tightly coordinated services:
+## 🏗️ System Architecture
 
 ```
-┌───────────────────────────────────────────────────────────────┐
-│                 ReachInbox Frontend (Static Site)             │
-│            React 18 • Vite • Tailwind CSS • SPA Routing       │
-│               URL: https://reachinbox-frontend.onrender.com    │
-└──────────────────────────────┬────────────────────────────────┘
-                               │ HTTPS API Calls (Bearer JWT)
-                               ▼
-┌───────────────────────────────────────────────────────────────┐
-│                 ReachInbox Backend (Web Service)              │
-│               Node.js 20 • Express REST API • Zod             │
-│               URL: https://reachinbox-backend.onrender.com     │
-└──────────────┬───────────────────────────────┬────────────────┘
-               │                               │
-        1. Save Metadata                2. Enqueue Delayed Job
-               │                               │
-               ▼                               ▼
-┌──────────────────────────────┐ ┌──────────────────────────────┐
-│    Render PostgreSQL 16      │ │    Render Redis Key-Value    │
-│    Persistent Relational DB  │ │    Noeviction • AOF Queue    │
-└──────────────────────────────┘ └─────────────┬────────────────┘
-                                               │
-                                        3. Delay Elapses
-                                               │
-                                               ▼
-┌───────────────────────────────────────────────────────────────┐
-│            ReachInbox Dedicated Worker (Background Worker)    │
-│               BullMQ Job Processor • Idempotency Checks       │
-└──────────────────────────────┬────────────────────────────────┘
-                               │
-                               ▼
-┌───────────────────────────────────────────────────────────────┐
-│                   Ethereal Email SMTP Service                 │
-│         Renders live preview URLs for each sent email         │
-└───────────────────────────────────────────────────────────────┘
+┌─────────────────────────────────────────────────────────────────┐
+│                    ReachInbox Frontend (Vercel)                 │
+│              React 18 • Vite • Tailwind CSS • SPA Routing       │
+│                URL: https://reachinbox-scheduler.vercel.app     │
+└────────────────────────────────┬────────────────────────────────┘
+                                 │ HTTPS REST API Calls (Bearer JWT)
+                                 ▼
+┌─────────────────────────────────────────────────────────────────┐
+│                    ReachInbox Backend (Render)                  │
+│                Node.js 20 • Express REST API • Zod              │
+│                URL: https://reachinbox-backend.onrender.com     │
+└────────────────┬───────────────────────────────┬────────────────┘
+                 │                               │
+          1. Save Record                  2. Enqueue Delayed Job
+                 │                               │
+                 ▼                               ▼
+┌────────────────────────────────┐ ┌──────────────────────────────┐
+│     Render PostgreSQL 16       │ │    Render Redis Key-Value    │
+│     Users • Emails • Prisma    │ │    Delayed Set • Noeviction  │
+└────────────────────────────────┘ └─────────────┬────────────────┘
+                                                 │
+                                          3. Delay Elapses
+                                                 │
+                                                 ▼
+┌─────────────────────────────────────────────────────────────────┐
+│              ReachInbox Dedicated Worker (Render)               │
+│                BullMQ Worker • Idempotency Check                │
+└────────────────────────────────┬────────────────────────────────┘
+                                 │
+                                 ▼
+┌─────────────────────────────────────────────────────────────────┐
+│                    Ethereal Email SMTP Service                  │
+│             Renders live preview URLs for each test email       │
+└─────────────────────────────────────────────────────────────────┘
 ```
 
 ---
 
-## 🚀 Option 1: 1-Click Deployment with Render Blueprint (`render.yaml`)
+## 🚀 Part 1: Deploying Backend & Database on Render
 
-The repository includes a production-grade `render.yaml` Blueprint that automatically provisions all 5 services with linked network environments and auto-generated secrets.
+Deploy the backend first so you have your live Backend API URL ready for the Vercel frontend.
 
-### Steps:
-1. **Push Changes to GitHub**:
-   Ensure this repository is pushed to your GitHub account (`origin/main`).
-2. **Log into Render**:
-   Open [dashboard.render.com](https://dashboard.render.com).
-3. **Create New Blueprint**:
-   - Click **"New +"** in the top navigation.
-   - Select **"Blueprint"**.
-   - Connect your GitHub repository (`reachinbox-email-scheduler`).
-   - Click **"Connect"**.
-4. **Approve Blueprint**:
-   Render will parse `render.yaml` and display the 5 resources:
-   - `reachinbox-db` (PostgreSQL)
-   - `reachinbox-redis` (Redis Key Value)
-   - `reachinbox-backend` (Node Web Service)
-   - `reachinbox-worker` (Background Worker)
-   - `reachinbox-frontend` (Static Site)
-5. **Click "Apply"**:
-   Render provisions the database and Redis first, generates migrations via `npx prisma migrate deploy`, builds the TypeScript application, starts the API and worker, and publishes the frontend.
+### Step 1.1: Deploy PostgreSQL Database
+1. Go to [dashboard.render.com](https://dashboard.render.com).
+2. Click **New + > PostgreSQL**.
+3. Settings:
+   - **Name**: `reachinbox-db`
+   - **Database**: `reachinbox`
+   - **User**: `reachinbox_user`
+   - **Region**: Oregon (or your preferred region)
+   - **Plan**: Free
+4. Click **Create Database**.
+5. Copy the **Internal Database URL** (e.g., `postgresql://reachinbox_user:...@dpg-...-a/reachinbox`).
 
----
+### Step 1.2: Deploy Redis Key-Value Store
+1. In Render Dashboard, click **New + > Redis** (or Key Value).
+2. Settings:
+   - **Name**: `reachinbox-redis`
+   - **Plan**: Free
+   - **Maxmemory Policy**: `noeviction` *(critical for BullMQ delayed jobs)*
+3. Click **Create Redis**.
+4. Copy the **Internal Redis Connection String** (e.g., `redis://red-...:6379`).
 
-## 🛠️ Option 2: Individual Service Deployment (Manual Step-by-Step)
-
-If you prefer to deploy each service individually or are using the free tier:
-
-### Step 1: Create PostgreSQL Database
-1. Go to **Dashboard > New + > PostgreSQL**.
-2. **Name**: `reachinbox-db`
-3. **Database**: `reachinbox`
-4. **User**: `reachinbox_user`
-5. **Plan**: Free
-6. Click **Create Database**.
-7. Note down the **Internal Database URL**.
-
-### Step 2: Create Redis Key-Value Store
-1. Go to **Dashboard > New + > Redis** (or Key Value).
-2. **Name**: `reachinbox-redis`
-3. **Plan**: Free
-4. **Maxmemory Policy**: `noeviction` (critical for BullMQ delayed queue persistence)
-5. Click **Create Redis**.
-6. Note down the **Internal Redis Connection String** (`redis://...`).
-
-### Step 3: Deploy Backend Web Service
-1. Go to **Dashboard > New + > Web Service**.
-2. Connect your GitHub repository.
-3. Configure the settings:
+### Step 1.3: Deploy Backend Web Service (Express API)
+1. In Render Dashboard, click **New + > Web Service**.
+2. Connect your GitHub repository (`reachinbox-email-scheduler`).
+3. Configure settings:
    - **Name**: `reachinbox-backend`
    - **Root Directory**: `backend`
-   - **Environment**: `Node`
+   - **Runtime**: `Node`
    - **Build Command**: `npm install && npx prisma generate && npm run build`
    - **Pre-Deploy Command**: `npx prisma migrate deploy`
    - **Start Command**: `node dist/server.js`
    - **Health Check Path**: `/health`
+   - **Plan**: Free
 4. Add **Environment Variables**:
-   | Key | Value | Description |
+   | Variable | Value | Description |
    | :--- | :--- | :--- |
-   | `NODE_ENV` | `production` | Production mode |
-   | `PORT` | `10000` | Render standard port |
-   | `DATABASE_URL` | *(Paste Internal DB URL from Step 1)* | PostgreSQL connection |
-   | `REDIS_URL` | *(Paste Internal Redis URL from Step 2)* | Redis BullMQ connection |
-   | `JWT_SECRET` | *(Click "Generate" or random 32+ char string)* | Token encryption |
+   | `NODE_ENV` | `production` | Production environment |
+   | `PORT` | `10000` | Render default port |
+   | `DATABASE_URL` | *(Paste Internal DB URL from Step 1.1)* | PostgreSQL connection |
+   | `REDIS_URL` | *(Paste Internal Redis URL from Step 1.2)* | Redis connection |
+   | `JWT_SECRET` | *(Click "Generate" or set secure string)* | JWT auth secret |
    | `JWT_EXPIRES_IN` | `7d` | Token expiry |
-   | `FRONTEND_URL` | `https://reachinbox-frontend.onrender.com` | CORS origin |
-   | `SMTP_HOST` | `smtp.ethereal.email` | Test SMTP host |
-   | `SMTP_PORT` | `587` | Test SMTP port |
-   | `ETHEREAL_AUTO_CREATE` | `true` | Auto-provisions test accounts |
-5. Click **Deploy Web Service**.
-6. Note down your public backend URL (e.g. `https://reachinbox-backend.onrender.com`).
-7. Verify health: visit `https://reachinbox-backend.onrender.com/health`.
+   | `FRONTEND_URL` | `https://*.vercel.app` *(or your Vercel URL)* | CORS allowed origin |
+   | `SMTP_HOST` | `smtp.ethereal.email` | Ethereal test host |
+   | `SMTP_PORT` | `587` | Ethereal test port |
+   | `ETHEREAL_AUTO_CREATE` | `true` | Auto-generate test inbox |
+5. Click **Create Web Service**.
+6. Once deployed, note down your Public Backend URL (e.g., `https://reachinbox-backend.onrender.com`).
+7. Verify health: visit `https://reachinbox-backend.onrender.com/health` (should return `{"status":"healthy"}`).
 
-### Step 4: Deploy Background Worker
-1. Go to **Dashboard > New + > Background Worker** (or another Web Service on Free Tier running worker).
-2. Connect your GitHub repository.
+### Step 1.4: Deploy Background Worker
+1. In Render Dashboard, click **New + > Background Worker** (or another Web Service on free tier).
+2. Connect your repository.
 3. Configure settings:
    - **Name**: `reachinbox-worker`
    - **Root Directory**: `backend`
-   - **Environment**: `Node`
+   - **Runtime**: `Node`
    - **Build Command**: `npm install && npx prisma generate && npm run build`
    - **Start Command**: `node dist/worker.js`
-4. Add **Environment Variables**:
+4. Add environment variables:
    - `NODE_ENV`: `production`
    - `DATABASE_URL`: *(Same as backend)*
    - `REDIS_URL`: *(Same as backend)*
    - `SMTP_HOST`: `smtp.ethereal.email`
    - `SMTP_PORT`: `587`
    - `ETHEREAL_AUTO_CREATE`: `true`
-5. Click **Deploy**.
-
-### Step 5: Deploy Frontend Static Site
-1. Go to **Dashboard > New + > Static Site**.
-2. Connect your GitHub repository.
-3. Configure settings:
-   - **Name**: `reachinbox-frontend`
-   - **Root Directory**: `frontend`
-   - **Build Command**: `npm install && npm run build`
-   - **Publish Directory**: `./dist`
-4. Configure **Redirects / Rewrites**:
-   - **Type**: `Rewrite`
-   - **Source**: `/*`
-   - **Destination**: `/index.html`
-   *(Also backed up automatically by `frontend/public/_redirects`)*
-5. Add **Environment Variable**:
-   | Key | Value |
-   | :--- | :--- |
-   | `VITE_API_URL` | `https://reachinbox-backend.onrender.com` |
-6. Click **Deploy Static Site**.
+5. Click **Create Background Worker**.
 
 ---
 
-## 🔒 Security Best Practices
+## ⚡ Part 2: Deploying Frontend on Vercel
 
-- **Never Commit Secrets**: All `.env` files are strictly excluded via `.gitignore`.
-- **Database Access**: Internal Render database connections use private hostnames inaccessible from the public internet.
-- **CORS Protection**: Dynamic origin validation with wildcard support for `*.onrender.com` preview subdomains and explicit production frontend origins.
-- **Safe Authentication**: Passwords hashed with `bcryptjs` (salt rounds: 10), stateless JWT tokens with expiry checks.
+### Step 2.1: Import Project in Vercel
+1. Log into [vercel.com](https://vercel.com).
+2. Click **Add New... > Project**.
+3. Select your GitHub repository (`reachinbox-email-scheduler`) and click **Import**.
+
+### Step 2.2: Configure Project Settings
+In the Vercel project configuration screen:
+1. **Framework Preset**: Vercel will automatically detect **Vite**.
+2. **Root Directory**: Click **Edit** next to Root Directory and set it to:
+   ```
+   frontend
+   ```
+   *(Crucial: Points Vercel directly to the frontend package within the monorepo)*
+3. **Build & Output Settings**:
+   - **Build Command**: `npm run build` (or leave as default `vite build`)
+   - **Output Directory**: `dist` (default for Vite)
+   - **Install Command**: `npm install`
+
+### Step 2.3: Set Environment Variables
+Under the **Environment Variables** section, add:
+| Key | Value | Example |
+| :--- | :--- | :--- |
+| `VITE_API_BASE_URL` | Your Render Backend URL | `https://reachinbox-backend.onrender.com` |
+
+*(Note: The frontend code automatically normalizes the URL to append `/api` if omitted, so either `https://...onrender.com` or `https://...onrender.com/api` works perfectly!)*
+
+### Step 2.4: Deploy
+1. Click **Deploy**.
+2. Vercel builds the React + Vite application and deploys it to its global edge network.
+3. Once complete, you will receive your live frontend URL (e.g., `https://reachinbox-scheduler.vercel.app`).
+
+### Step 2.5: SPA Routing Check (404 Prevention)
+The repository includes [`frontend/vercel.json`](file:///Users/ayankadri/Desktop/reachinbox%20box%20scheduler/frontend/vercel.json):
+```json
+{
+  "rewrites": [
+    {
+      "source": "/(.*)",
+      "destination": "/index.html"
+    }
+  ]
+}
+```
+This guarantees that refreshing any page (such as `/scheduled`, `/sent`, or `/login`) routes cleanly to `/index.html` without 404 errors.
+
+---
+
+## 🔄 Part 3: Connecting Frontend and Backend
+
+1. **In Vercel**: Ensure `VITE_API_BASE_URL` is set to your live Render backend URL (`https://<your-backend>.onrender.com`).
+2. **In Render Backend**:
+   - Go to **Environment** in your `reachinbox-backend` service.
+   - Set `FRONTEND_URL` to your Vercel URL (e.g. `https://reachinbox-scheduler.vercel.app`).
+   - *(Note: The backend CORS middleware already includes built-in wildcard support for `https://*.vercel.app`, so preview branches and deployments work automatically!)*
 
 ---
 
 ## 🧪 Post-Deployment Verification Checklist
 
-1. **Health Check**:
-   Visit `https://<YOUR-BACKEND>.onrender.com/health`
+1. **Verify Backend Health**:
+   Visit `https://<your-backend>.onrender.com/health`
    Expected response:
    ```json
    {
      "status": "healthy",
-     "timestamp": "2026-11-04T...",
+     "timestamp": "2026-...",
      "services": {
        "database": "healthy",
        "redis": "healthy"
      }
    }
    ```
-2. **User Registration & Login**:
-   Open `https://<YOUR-FRONTEND>.onrender.com` and register a new account or log in with demo credentials.
-3. **Schedule an Email**:
-   Schedule an email 60 seconds into the future.
-4. **Monitor Worker Logs**:
-   Open `reachinbox-worker` logs in Render dashboard. Observe:
-   - Delay countdown
-   - Job processing
-   - Ethereal SMTP delivery
-   - Preview URL generated
-5. **View Sent Emails**:
-   Navigate to the **Sent** tab in the dashboard and click the preview link to view the rendered email.
+
+2. **Verify Frontend UI**:
+   Open your Vercel URL (e.g. `https://reachinbox-scheduler.vercel.app`).
+
+3. **Verify SPA Routing & Page Refresh**:
+   Navigate to the `/scheduled` page and press **Refresh (F5)** in your browser. Verify the page reloads cleanly without a 404.
+
+4. **Verify Authentication**:
+   Log in with demo credentials or register a new user:
+   - **Email**: `demo@reachinbox.test`
+   - **Password**: `reachinbox123`
+
+5. **Verify Delayed Email Scheduling**:
+   - Navigate to **Schedule Email**.
+   - Schedule an email 60 seconds into the future.
+   - Check the **Scheduled** list to verify the job appears.
+   - Wait 60 seconds, then check the **Sent** tab.
+   - Click the **Ethereal Preview URL** to inspect the rendered test email.

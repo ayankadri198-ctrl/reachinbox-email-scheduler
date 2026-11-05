@@ -50,6 +50,11 @@ export const createApp = (): Application => {
           return callback(null, true);
         }
 
+        // Allow any Vercel-hosted deployment (*.vercel.app) for production or preview branches
+        if (/^https:\/\/[a-zA-Z0-9-._]+\.vercel\.app$/.test(cleanOrigin)) {
+          return callback(null, true);
+        }
+
         // Allow localhost on any port for local development
         if (/^http:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/.test(cleanOrigin)) {
           return callback(null, true);
