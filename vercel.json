@@ -4,12 +4,12 @@
     "reachinbox-backend": {
       "root": "backend",
       "framework": "express",
-      "buildCommand": "npm install && npx prisma generate && npm run build"
+      "buildCommand": "npm install --include=dev && npx prisma generate && npm run build"
     },
     "reachinbox-frontend": {
       "root": "frontend",
       "framework": "vite",
-      "buildCommand": "npm install && npm run build",
+      "buildCommand": "npm install --include=dev && npm run build",
       "rewrites": [
         {
           "source": "/(.*)",
