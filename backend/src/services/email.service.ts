@@ -2,6 +2,10 @@ import { prisma } from '../config/prisma.js';
 import { addEmailJob, removeEmailJob, rescheduleEmailJob } from '../queues/email.queue.js';
 import { ScheduleEmailInput, UpdateEmailInput, EmailQueryInput } from '../validators/email.validator.js';
 import { EmailStatus, Prisma } from '@prisma/client';
+import { isRedisConfigured } from '../config/redis.js';
+import { Logger } from '../utils/logger.js';
+
+const logger = new Logger('EmailService');
 
 class EmailService {
   async scheduleEmail(userId: string, input: ScheduleEmailInput) {
@@ -19,37 +23,41 @@ class EmailService {
       },
     });
 
-    // 2. Add delayed job to BullMQ
-    try {
-      const job = await addEmailJob({
-        id: email.id,
-        userId,
-        recipient: email.recipient,
-        subject: email.subject,
-        body: email.body,
-        scheduledAt: email.scheduledAt,
-      });
+    // 2. Add delayed job to BullMQ if Redis is configured
+    if (isRedisConfigured()) {
+      try {
+        const job = await addEmailJob({
+          id: email.id,
+          userId,
+          recipient: email.recipient,
+          subject: email.subject,
+          body: email.body,
+          scheduledAt: email.scheduledAt,
+        });
 
-      // 3. Update email record with BullMQ Job ID
-      const updated = await prisma.email.update({
-        where: { id: email.id },
-        data: {
-          bullJobId: String(job.id),
-        },
-      });
+        // 3. Update email record with BullMQ Job ID
+        const updated = await prisma.email.update({
+          where: { id: email.id },
+          data: {
+            bullJobId: String(job.id),
+          },
+        });
 
-      return updated;
-    } catch (error) {
-      // If queueing fails, mark email as FAILED in DB and throw
-      await prisma.email.update({
-        where: { id: email.id },
-        data: {
-          status: EmailStatus.FAILED,
-          errorMessage: 'Failed to enqueue delayed job in Redis',
-        },
-      });
-      throw error;
+        return updated;
+      } catch (error) {
+        logger.warn(
+          `[EmailService] Delayed job could not be enqueued to Redis for email ${email.id}: ${
+            error instanceof Error ? error.message : String(error)
+          }. Email is saved and scheduled in PostgreSQL database.`
+        );
+        return email;
+      }
     }
+
+    logger.info(
+      `[EmailService] Redis not configured in this environment. Email ${email.id} saved as SCHEDULED in database.`
+    );
+    return email;
   }
 
   async updateEmail(userId: string, emailId: string, input: UpdateEmailInput) {
@@ -86,15 +94,21 @@ class EmailService {
       },
     });
 
-    // Reschedule in BullMQ
-    await rescheduleEmailJob({
-      id: updated.id,
-      userId: updated.userId,
-      recipient: updated.recipient,
-      subject: updated.subject,
-      body: updated.body,
-      scheduledAt: updated.scheduledAt,
-    });
+    // Reschedule in BullMQ if Redis is configured
+    if (isRedisConfigured()) {
+      try {
+        await rescheduleEmailJob({
+          id: updated.id,
+          userId: updated.userId,
+          recipient: updated.recipient,
+          subject: updated.subject,
+          body: updated.body,
+          scheduledAt: updated.scheduledAt,
+        });
+      } catch (error) {
+        logger.warn(`[EmailService] Could not reschedule BullMQ job for email ${updated.id}:`, error);
+      }
+    }
 
     return updated;
   }
@@ -120,8 +134,14 @@ class EmailService {
       throw error;
     }
 
-    // 1. Remove from BullMQ queue
-    await removeEmailJob(email.bullJobId || email.id);
+    // 1. Remove from BullMQ queue if Redis is configured
+    if (isRedisConfigured()) {
+      try {
+        await removeEmailJob(email.bullJobId || email.id);
+      } catch (error) {
+        logger.warn(`[EmailService] Could not remove BullMQ job for email ${email.id}:`, error);
+      }
+    }
 
     // 2. Mark as CANCELLED in database
     const cancelled = await prisma.email.update({
@@ -168,14 +188,20 @@ class EmailService {
       },
     });
 
-    await rescheduleEmailJob({
-      id: updated.id,
-      userId: updated.userId,
-      recipient: updated.recipient,
-      subject: updated.subject,
-      body: updated.body,
-      scheduledAt: updated.scheduledAt,
-    });
+    if (isRedisConfigured()) {
+      try {
+        await rescheduleEmailJob({
+          id: updated.id,
+          userId: updated.userId,
+          recipient: updated.recipient,
+          subject: updated.subject,
+          body: updated.body,
+          scheduledAt: updated.scheduledAt,
+        });
+      } catch (error) {
+        logger.warn(`[EmailService] Could not enqueue retry BullMQ job for email ${updated.id}:`, error);
+      }
+    }
 
     return updated;
   }

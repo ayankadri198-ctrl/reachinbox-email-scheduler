@@ -5,7 +5,7 @@ import { Logger } from '../utils/logger.js';
 const logger = new Logger('Redis');
 
 export const isRedisConfigured = (): boolean => {
-  const redisUrl = process.env.REDIS_URL || env.REDIS_URL;
+  const redisUrl = process.env.REDIS_URL || process.env.KV_URL || env.REDIS_URL;
   if (redisUrl && redisUrl.trim() !== '') {
     const isServerless = Boolean(process.env.VERCEL || process.env.AWS_LAMBDA_FUNCTION_NAME);
     if (isServerless && (redisUrl.includes('localhost') || redisUrl.includes('127.0.0.1'))) {
@@ -20,7 +20,7 @@ export const isRedisConfigured = (): boolean => {
 };
 
 export const getRedisConnectionOptions = (): RedisOptions => {
-  const redisUrl = env.REDIS_URL || process.env.REDIS_URL;
+  const redisUrl = process.env.REDIS_URL || process.env.KV_URL || env.REDIS_URL;
   if (redisUrl && redisUrl.trim() !== '') {
     try {
       const parsed = new URL(redisUrl);

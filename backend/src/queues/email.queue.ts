@@ -1,5 +1,5 @@
 import { Queue, Job } from 'bullmq';
-import { redisConnectionOptions, isRedisConfigured } from '../config/redis.js';
+import { getRedisConnectionOptions, isRedisConfigured } from '../config/redis.js';
 import { Logger } from '../utils/logger.js';
 
 const logger = new Logger('EmailQueue');
@@ -24,7 +24,7 @@ export const getEmailQueue = (): Queue<EmailJobData> | null => {
 
   if (!_emailQueue) {
     _emailQueue = new Queue<EmailJobData>(EMAIL_QUEUE_NAME, {
-      connection: redisConnectionOptions,
+      connection: getRedisConnectionOptions(),
       defaultJobOptions: {
         attempts: 3,
         backoff: {
@@ -90,9 +90,12 @@ export const addEmailJob = async (email: {
 }): Promise<Job<EmailJobData>> => {
   const queue = getEmailQueue();
   if (!queue) {
-    throw new Error(
+    const error: any = new Error(
       'Cannot schedule delayed email: Redis is not configured in this environment. Set REDIS_URL to enable scheduling.'
     );
+    error.statusCode = 400;
+    error.isOperational = true;
+    throw error;
   }
 
   const scheduledTime = new Date(email.scheduledAt).getTime();
